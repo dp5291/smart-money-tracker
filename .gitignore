@@ -1,0 +1,46 @@
+# ── CRITICAL — never commit these ─────────────────────────────
+.env
+*.pt                    # trained model files (too large for GitHub)
+*.pkl                   # scaler files
+
+# ── Python ────────────────────────────────────────────────────
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Logs ──────────────────────────────────────────────────────
+logs/
+*.log
+
+# ── Models (save separately, too large for GitHub) ────────────
+models/saved/
+
+# ── Node / React ──────────────────────────────────────────────
+node_modules/
+.next/
+out/
+build/
+.DS_Store
+
+# ── IDE ────────────────────────────────────────────────────────
+.vscode/settings.json   # keep extensions.json but not personal settings
+.idea/
+*.swp
+*.swo
+
+# ── OS ────────────────────────────────────────────────────────
+.DS_Store               # Mac
+Thumbs.db               # Windows
+desktop.ini
+
+# ── Testing ───────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/

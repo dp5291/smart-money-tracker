@@ -1,0 +1,170 @@
+// ─────────────────────────────────────────────────────────────
+// Smart Money Tracker — Pine Script v5
+// Paste this into TradingView → Pine Script Editor → Add to chart
+//
+// SETUP STEPS IN TRADINGVIEW:
+//   1. Open any chart (e.g. AAPL daily)
+//   2. Click "Pine Script Editor" at the bottom
+//   3. Paste this entire script
+//   4. Click "Add to chart"
+//   5. Right-click any signal triangle → "Add alert"
+//   6. In the alert, set Webhook URL to:
+//      http://YOUR_SERVER_IP:8000/webhook/tradingview
+//      (use ngrok for local testing: ngrok http 8000)
+//   7. Set message to: {{strategy.order.alert_message}}
+//   8. Click Create
+//
+// NOTE: Webhooks require TradingView Pro plan.
+// If you have free plan, set alerts to email — still works,
+// just not automated.
+// ─────────────────────────────────────────────────────────────
+
+//@version=5
+strategy(
+    title       = "Smart Money Tracker",
+    overlay     = true,
+    max_bars_back = 500
+)
+
+// ── INPUTS (configurable in TradingView settings panel) ───────
+sma200_len  = input.int(200, "200 SMA length",  group="Trend")
+sma50_len   = input.int(50,  "50 SMA length",   group="Trend")
+ema20_len   = input.int(20,  "20 EMA length",   group="Trend")
+rsi_len     = input.int(14,  "RSI length",       group="Momentum")
+rsi_ob      = input.int(70,  "RSI Overbought",   group="Momentum")
+rsi_os      = input.int(30,  "RSI Oversold",     group="Momentum")
+bb_len      = input.int(20,  "BB length",        group="Volatility")
+bb_mult     = input.float(2.0,"BB StdDev",       group="Volatility")
+vol_mult    = input.float(1.5,"Volume surge multiplier", group="Volume")
+
+// ── INDICATORS ────────────────────────────────────────────────
+
+// Trend
+sma200      = ta.sma(close, sma200_len)
+sma50       = ta.sma(close, sma50_len)
+ema20       = ta.ema(close, ema20_len)
+golden_cross = sma50 > sma200
+sma200_dist  = (close - sma200) / sma200 * 100   // % above/below 200 SMA
+
+// Momentum
+rsi         = ta.rsi(close, rsi_len)
+[macd, macd_signal, macd_hist] = ta.macd(close, 12, 26, 9)
+[stoch_k, stoch_d] = ta.stoch(close, high, low, 14)
+roc10       = ta.roc(close, 10)
+
+// Volatility
+[bb_upper, bb_middle, bb_lower] = ta.bb(close, bb_len, bb_mult)
+bb_width    = (bb_upper - bb_lower) / bb_middle * 100
+atr14       = ta.atr(14)
+bb_squeeze  = bb_width < ta.percentile_linear_interpolation(bb_width, 125, 20)
+
+// Volume
+vol_avg     = ta.sma(volume, 20)
+vol_surge   = volume > vol_avg * vol_mult
+vwap_val    = ta.vwap(hlc3)
+obv_val     = ta.obv
+
+// ── SIGNAL CONDITIONS ─────────────────────────────────────────
+
+// STRONG BULLISH — requires multiple confirming indicators
+// Logic: price is in uptrend (above 200 SMA, golden cross active)
+//        momentum is positive (MACD cross, RSI in healthy zone)
+//        volume confirms (above average)
+strong_bull = (
+    close > sma200 and          // above 200 SMA (primary trend)
+    golden_cross and            // 50 SMA above 200 SMA
+    rsi > 40 and rsi < rsi_ob  and  // RSI healthy, not overbought
+    macd > macd_signal and      // MACD bullish cross
+    close > vwap_val and        // above VWAP (intraday bullish)
+    vol_surge                   // volume confirming
+)
+
+// OVERSOLD BOUNCE — price dipped but in an uptrend
+// Logic: overall trend is up, but RSI hit oversold → buy the dip
+oversold_bounce = (
+    close > sma200 and          // still in uptrend
+    rsi < rsi_os and            // oversold
+    stoch_k < 20 and            // stochastic also oversold
+    close > bb_lower            // price touching/near lower band
+)
+
+// STRONG BEARISH — multiple bearish confirms
+strong_bear = (
+    close < sma200 and          // below 200 SMA (downtrend)
+    not golden_cross and        // death cross or approaching
+    rsi > rsi_ob and            // overbought
+    macd < macd_signal and      // MACD bearish
+    close < vwap_val            // below VWAP
+)
+
+// BOLLINGER SQUEEZE BREAKOUT — explosive move incoming
+// When bands squeeze very tight, a big move is coming.
+// Direction determined by which way price breaks.
+squeeze_bull = bb_squeeze and ta.crossover(close, bb_upper)
+squeeze_bear = bb_squeeze and ta.crossunder(close, bb_lower)
+
+// ── PLOT INDICATORS ON CHART ──────────────────────────────────
+plot(sma200,    title="200 SMA", color=color.new(color.blue, 0),   linewidth=2)
+plot(sma50,     title="50 SMA",  color=color.new(color.orange, 0), linewidth=1)
+plot(ema20,     title="20 EMA",  color=color.new(color.purple, 0), linewidth=1)
+plot(bb_upper,  title="BB Upper",color=color.new(color.gray, 50),  linewidth=1)
+plot(bb_lower,  title="BB Lower",color=color.new(color.gray, 50),  linewidth=1)
+plot(vwap_val,  title="VWAP",    color=color.new(color.teal, 0),   linewidth=1)
+
+// Golden/Death cross background highlight
+bgcolor(
+    golden_cross ? color.new(color.green, 95) : color.new(color.red, 95),
+    title = "Market regime"
+)
+
+// Signal arrows on chart
+plotshape(
+    strong_bull,     title="Strong Bull",
+    style = shape.triangleup, location = location.belowbar,
+    color = color.new(color.green, 0), size = size.small
+)
+plotshape(
+    oversold_bounce, title="Oversold Bounce",
+    style = shape.circle, location = location.belowbar,
+    color = color.new(color.lime, 0), size = size.tiny
+)
+plotshape(
+    strong_bear,     title="Strong Bear",
+    style = shape.triangledown, location = location.abovebar,
+    color = color.new(color.red, 0), size = size.small
+)
+plotshape(
+    squeeze_bull,    title="Squeeze Bull",
+    style = shape.diamond, location = location.belowbar,
+    color = color.new(color.blue, 0), size = size.small
+)
+
+// ── STRATEGY ENTRIES (for backtesting in TradingView) ─────────
+// These let you run the built-in TradingView backtest
+if strong_bull or oversold_bounce or squeeze_bull
+    strategy.entry("Long", strategy.long,
+        alert_message = '{"ticker":"' + syminfo.ticker + '","signal":"bullish","price":' + str.tostring(close) + ',"rsi":' + str.tostring(math.round(rsi, 1)) + ',"macd":' + str.tostring(math.round(macd, 4)) + ',"sma200_dist":' + str.tostring(math.round(sma200_dist, 2)) + ',"volume_ratio":' + str.tostring(math.round(volume/vol_avg, 2)) + ',"golden_cross":' + str.tostring(golden_cross) + ',"bb_width":' + str.tostring(math.round(bb_width, 2)) + ',"source":"tradingview"}'
+    )
+
+if strong_bear or squeeze_bear
+    strategy.entry("Short", strategy.short,
+        alert_message = '{"ticker":"' + syminfo.ticker + '","signal":"bearish","price":' + str.tostring(close) + ',"rsi":' + str.tostring(math.round(rsi, 1)) + ',"macd":' + str.tostring(math.round(macd, 4)) + ',"sma200_dist":' + str.tostring(math.round(sma200_dist, 2)) + ',"golden_cross":' + str.tostring(golden_cross) + ',"source":"tradingview"}'
+    )
+
+// ── STANDALONE ALERT CONDITIONS ───────────────────────────────
+// Use these if you want alerts WITHOUT running as a strategy
+alertcondition(
+    strong_bull,
+    title   = "Strong Bullish Signal",
+    message = '{"ticker":"{{ticker}}","signal":"bullish","price":{{close}},"rsi":{{plot("RSI")}},"source":"tradingview"}'
+)
+alertcondition(
+    strong_bear,
+    title   = "Strong Bearish Signal",
+    message = '{"ticker":"{{ticker}}","signal":"bearish","price":{{close}},"source":"tradingview"}'
+)
+alertcondition(
+    bb_squeeze,
+    title   = "Bollinger Squeeze Detected",
+    message = '{"ticker":"{{ticker}}","signal":"squeeze","price":{{close}},"source":"tradingview"}'
+)
