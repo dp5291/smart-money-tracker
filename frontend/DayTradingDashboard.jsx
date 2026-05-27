@@ -1,3 +1,16 @@
+// ============================================================
+// Smart Money Tracker
+// Copyright (c) 2026 Dhruv Patel. All rights reserved.
+//
+// This software is proprietary and confidential.
+// Unauthorized copying, distribution, or modification
+// of this file, via any medium, is strictly prohibited.
+//
+// Author:  Dhruv Patel
+// GitHub:  github.com/dhruvpatel29
+// Email:   dhruvkumarp79@gmail.com
+// ============================================================
+
 // DayTradingDashboard.jsx
 // Add this to your smart-money-frontend/src/ folder
 // Then import and use it in App.jsx
@@ -70,7 +83,7 @@ function SignalBadge({ signal, confidence }) {
 }
 
 // ── Mini candlestick chart ─────────────────────────────────────
-function MiniChart({ candles = [], pmHigh, pmLow, vwap, height = 140 }) {
+function MiniChart({ candles = [], pmHigh, pmLow, vwap, prevHigh, prevLow, resistance = [], support = [], height = 140 }) {
   if (!candles.length) return (
     <div style={{ height, display: "flex", alignItems: "center", justifyContent: "center",
                   color: "#4b5563", fontSize: 12 }}>
@@ -121,6 +134,40 @@ function MiniChart({ candles = [], pmHigh, pmLow, vwap, height = 140 }) {
           <text x={w - pad.r + 2} y={scaleY(vwap) + 4} fontSize="8" fill="#818cf8">VWAP</text>
         </>
       )}
+
+      {/* Previous day high/low */}
+      {prevHigh && scaleY(prevHigh) > pad.t && scaleY(prevHigh) < h && (
+        <>
+          <line x1={pad.l} y1={scaleY(prevHigh)} x2={w - pad.r} y2={scaleY(prevHigh)}
+                stroke="#f97316" strokeWidth="1" strokeDasharray="3 2" opacity="0.8" />
+          <text x={w - pad.r + 2} y={scaleY(prevHigh) + 4} fontSize="8" fill="#f97316">PD H</text>
+        </>
+      )}
+      {prevLow && scaleY(prevLow) > pad.t && scaleY(prevLow) < h && (
+        <>
+          <line x1={pad.l} y1={scaleY(prevLow)} x2={w - pad.r} y2={scaleY(prevLow)}
+                stroke="#f97316" strokeWidth="1" strokeDasharray="3 2" opacity="0.8" />
+          <text x={w - pad.r + 2} y={scaleY(prevLow) + 4} fontSize="8" fill="#f97316">PD L</text>
+        </>
+      )}
+
+      {/* Key resistance levels */}
+      {resistance.map((level, i) => scaleY(level) > pad.t && scaleY(level) < h && (
+        <g key={"r"+i}>
+          <line x1={pad.l} y1={scaleY(level)} x2={w - pad.r} y2={scaleY(level)}
+                stroke="#ef4444" strokeWidth="0.75" strokeDasharray="2 3" opacity="0.7" />
+          <text x={w - pad.r + 2} y={scaleY(level) + 4} fontSize="7" fill="#ef4444">R{i+1}</text>
+        </g>
+      ))}
+
+      {/* Key support levels */}
+      {support.map((level, i) => scaleY(level) > pad.t && scaleY(level) < h && (
+        <g key={"s"+i}>
+          <line x1={pad.l} y1={scaleY(level)} x2={w - pad.r} y2={scaleY(level)}
+                stroke="#22c55e" strokeWidth="0.75" strokeDasharray="2 3" opacity="0.7" />
+          <text x={w - pad.r + 2} y={scaleY(level) + 4} fontSize="7" fill="#22c55e">S{i+1}</text>
+        </g>
+      ))}
 
       {/* Candles */}
       {candles.map((c, i) => {
@@ -211,9 +258,11 @@ export default function DayTradingDashboard({ ticker = "AAPL" }) {
   const intervalRef = useRef(null);
 
   const fetchData = useCallback(async () => {
+    setLoading(true);
+    setData(null);
     try {
       const res = await fetch(`${API_BASE}/daytrading/${ticker}`, {
-        headers: { "X-API-Key": "dev" },  // DEV_MODE=true bypasses auth
+        headers: { "X-API-Key": "dev" },
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
@@ -228,7 +277,8 @@ export default function DayTradingDashboard({ ticker = "AAPL" }) {
 
   useEffect(() => {
     fetchData();
-    intervalRef.current = setInterval(fetchData, 60_000); // refresh every 1 min
+    clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(fetchData, 60_000);
     return () => clearInterval(intervalRef.current);
   }, [fetchData]);
 
@@ -395,14 +445,59 @@ export default function DayTradingDashboard({ ticker = "AAPL" }) {
             pmHigh={pm.high}
             pmLow={pm.low}
             vwap={vwapD.vwap}
+            prevHigh={data?.prev_day?.high}
+            prevLow={data?.prev_day?.low}
+            resistance={data?.key_levels?.resistance || []}
+            support={data?.key_levels?.support || []}
             height={180}
           />
-          <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
+          <div style={{ display: "flex", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
             <span style={{ fontSize: 10, color: "#f59e0b" }}>── PM High/Low</span>
             <span style={{ fontSize: 10, color: "#818cf8" }}>── VWAP</span>
-            <span style={{ fontSize: 10, color: "#22c55e" }}>▮ Bullish candle</span>
-            <span style={{ fontSize: 10, color: "#ef4444" }}>▮ Bearish candle</span>
+            <span style={{ fontSize: 10, color: "#f97316" }}>── Prev Day H/L</span>
+            <span style={{ fontSize: 10, color: "#ef4444" }}>── R levels</span>
+            <span style={{ fontSize: 10, color: "#22c55e" }}>── S levels</span>
+            <span style={{ fontSize: 10, color: "#22c55e" }}>▮ Bullish</span>
+            <span style={{ fontSize: 10, color: "#ef4444" }}>▮ Bearish</span>
           </div>
+        </div>
+
+        {/* Key levels panel */}
+        <div style={s.card}>
+          <div style={s.label}>Key levels — auto-detected</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <div>
+              <div style={{ fontSize: 10, color: '#f97316', fontWeight: 600, marginBottom: 4 }}>PREV DAY</div>
+              <div style={{ fontSize: 11, color: '#e2e8f0' }}>H: ${data?.prev_day?.high || '—'}</div>
+              <div style={{ fontSize: 11, color: '#e2e8f0' }}>L: ${data?.prev_day?.low  || '—'}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: '#ef4444', fontWeight: 600, marginBottom: 4 }}>RESISTANCE</div>
+              {(data?.key_levels?.resistance || []).slice(0,3).map((l,i) => (
+                <div key={i} style={{ fontSize: 11, color: '#fca5a5' }}>${l}</div>
+              ))}
+              {!(data?.key_levels?.resistance?.length) && <div style={{ fontSize: 11, color: '#6b7280' }}>None nearby</div>}
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: '#22c55e', fontWeight: 600, marginBottom: 4 }}>SUPPORT</div>
+              {(data?.key_levels?.support || []).slice(0,3).map((l,i) => (
+                <div key={i} style={{ fontSize: 11, color: '#86efac' }}>${l}</div>
+              ))}
+              {!(data?.key_levels?.support?.length) && <div style={{ fontSize: 11, color: '#6b7280' }}>None nearby</div>}
+            </div>
+          </div>
+          {(data?.key_levels?.trendlines || []).length > 0 && (
+            <div style={{ marginTop: 8, borderTop: '0.5px solid #21262d', paddingTop: 8 }}>
+              <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 600, marginBottom: 4 }}>AUTO TRENDLINES</div>
+              <div style={{ display: 'flex', gap: 12 }}>
+                {(data?.key_levels?.trendlines || []).map((t,i) => (
+                  <div key={i} style={{ fontSize: 11, color: t.color }}>
+                    {t.label}: ${t.p1} → ${t.p2}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Bottom row: Candle pattern + Signal reasons */}

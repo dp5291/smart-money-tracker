@@ -1,3 +1,16 @@
+# ============================================================
+# Smart Money Tracker
+# Copyright (c) 2026 Dhruv Patel. All rights reserved.
+#
+# This software is proprietary and confidential.
+# Unauthorized copying, distribution, or modification
+# of this file, via any medium, is strictly prohibited.
+#
+# Author:  Dhruv Patel
+# GitHub:  github.com/dhruvpatel29
+# Email:   dhruvkumarp79@gmail.com
+# ============================================================
+
 """
 api/daytrading.py — Day trading endpoints for options traders.
 
@@ -182,7 +195,7 @@ def detect_structure(df: pd.DataFrame, lookback: int = 20) -> dict:
     - Choppy → wait, no trade
     """
     if df.empty or len(df) < lookback:
-        return {"trend": "unknown", "structure": "insufficient data"}
+        return {"trend": "unknown", "structure": "insufficient data", "bias": "neutral", "action": "Not enough data"}
 
     recent = df.tail(lookback)
     highs  = recent["high"].values
@@ -299,6 +312,72 @@ def detect_hammer_candle(df: pd.DataFrame) -> dict:
 
 
 # ── VWAP calculation ───────────────────────────────────────────
+
+
+def get_previous_day_levels(ticker: str) -> dict:
+    """Get previous trading day high and low — key resistance/support levels."""
+    try:
+        df = yf.download(ticker, interval='1d', period='5d', progress=False, auto_adjust=True)
+        if df.empty or len(df) < 2:
+            return {'high': None, 'low': None}
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        df.columns = [c.lower() for c in df.columns]
+        prev = df.iloc[-2]
+        return {'high': round(float(prev['high']), 2), 'low': round(float(prev['low']), 2), 'date': str(df.index[-2].date())}
+    except Exception as e:
+        return {'high': None, 'low': None, 'error': str(e)}
+
+
+def get_key_levels(df: pd.DataFrame, n_levels: int = 5) -> dict:
+    """Auto-detect key support/resistance levels and trendlines from swing highs/lows."""
+    if df.empty or len(df) < 20:
+        return {'resistance': [], 'support': [], 'trendlines': []}
+
+    highs = df['high'].values
+    lows  = df['low'].values
+    closes = df['close'].values
+    window = 5
+
+    swing_highs = []
+    for i in range(window, len(highs) - window):
+        if all(highs[i] >= highs[i-j] for j in range(1, window+1)) and all(highs[i] >= highs[i+j] for j in range(1, window+1)):
+            swing_highs.append(round(float(highs[i]), 2))
+
+    swing_lows = []
+    for i in range(window, len(lows) - window):
+        if all(lows[i] <= lows[i-j] for j in range(1, window+1)) and all(lows[i] <= lows[i+j] for j in range(1, window+1)):
+            swing_lows.append(round(float(lows[i]), 2))
+
+    current_price = float(closes[-1])
+
+    def cluster_levels(levels, pct=0.003):
+        if not levels:
+            return []
+        levels = sorted(set(levels))
+        clustered, group = [], [levels[0]]
+        for level in levels[1:]:
+            if (level - group[0]) / group[0] < pct:
+                group.append(level)
+            else:
+                clustered.append(round(sum(group)/len(group), 2))
+                group = [level]
+        clustered.append(round(sum(group)/len(group), 2))
+        return clustered
+
+    res_levels = cluster_levels(swing_highs)
+    sup_levels = cluster_levels(swing_lows)
+
+    resistance = sorted([l for l in res_levels if l > current_price and (l - current_price)/current_price < 0.05])[:n_levels]
+    support    = sorted([l for l in sup_levels if l < current_price and (current_price - l)/current_price < 0.05], reverse=True)[:n_levels]
+
+    trendlines = []
+    if len(swing_highs) >= 2:
+        trendlines.append({'type': 'resistance', 'p1': swing_highs[-2], 'p2': swing_highs[-1], 'color': '#ef4444', 'label': 'Resistance trend'})
+    if len(swing_lows) >= 2:
+        trendlines.append({'type': 'support', 'p1': swing_lows[-2], 'p2': swing_lows[-1], 'color': '#22c55e', 'label': 'Support trend'})
+
+    return {'resistance': resistance, 'support': support, 'trendlines': trendlines}
 
 def calculate_vwap(df: pd.DataFrame) -> dict:
     """
@@ -458,13 +537,26 @@ async def get_daytrading_signal(
         tf = get_recommended_timeframe()
 
         # Fetch intraday data for multiple timeframes
-        df_2m  = fetch_intraday(ticker, "2m",  "1d")
-        df_5m  = fetch_intraday(ticker, "5m",  "1d")
-        df_10m = fetch_intraday(ticker, "10m", "1d")
-        df_1h  = fetch_intraday(ticker, "1h",  "5d")
+        # Fetch intraday data for multiple timeframes (parallel for speed)
+        import concurrent.futures
+        def _fetch(args): return fetch_intraday(*args)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+            results = list(ex.map(_fetch, [
+                (ticker, "2m",  "1d"),
+                (ticker, "5m",  "1d"),
+                (ticker, "15m", "1d"),
+                (ticker, "1h",  "5d"),
+            ]))
+        df_2m, df_5m, df_10m, df_1h = results
 
         # Get pre-market levels
         pm_levels = get_premarket_levels(ticker)
+
+        # Get previous day high/low
+        prev_day = get_previous_day_levels(ticker)
+
+        # Get key support/resistance levels and trendlines
+        key_levels = get_key_levels(df_5m if not df_5m.empty else df_1h)
 
         # Current price
         price_df = df_5m if not df_5m.empty else df_1h
@@ -514,6 +606,8 @@ async def get_daytrading_signal(
             "vwap":          vwap,
             "candle":        hammer,
             "options":       options,
+            "prev_day":      prev_day,
+            "key_levels":    key_levels,
             "charts": {
                 "2m":  df_to_chart(df_2m),
                 "5m":  df_to_chart(df_5m),

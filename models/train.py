@@ -1,3 +1,16 @@
+# ============================================================
+# Smart Money Tracker
+# Copyright (c) 2026 Dhruv Patel. All rights reserved.
+#
+# This software is proprietary and confidential.
+# Unauthorized copying, distribution, or modification
+# of this file, via any medium, is strictly prohibited.
+#
+# Author:  Dhruv Patel
+# GitHub:  github.com/dhruvpatel29
+# Email:   dhruvkumarp79@gmail.com
+# ============================================================
+
 """
 models/train.py — Train the LSTM model on historical data.
 
