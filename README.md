@@ -6,6 +6,21 @@
 
 ---
 
+## Screenshots
+
+### Swing Trading Dashboard
+![Swing Trading](screenshots/swing_trading.png)
+
+### Day Trading Mode — Options Signals
+![Day Trading 1](screenshots/day_trading1.png)
+
+![Day Trading 2](screenshots/day_trading2.png)
+
+### Backtest Results
+![Backtest](screenshots/backtest.png)
+
+---
+
 ## Backtest Results
 
 | Ticker | Sharpe Ratio | Win Rate | Total Return | Alpha |
