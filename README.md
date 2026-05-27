@@ -1,149 +1,144 @@
-# Smart Money Tracker
+# Smart Money Tracker — AI-Powered Market Signal Dashboard
 
-AI-powered market signal dashboard. Combines 25 technical indicators,
-FinBERT sentiment analysis, and a 2-layer LSTM to predict short-term
-stock direction with a confidence score.
-
-## What it does
-
-- **25 technical indicators** — 200/50 SMA, MACD, RSI, Bollinger Bands, VWAP, OBV, Fibonacci, and more
-- **FinBERT NLP** — scores financial news + Reddit sentiment in real time
-- **LSTM prediction** — directional probability (bullish/bearish/neutral) + confidence
-- **Backtesting engine** — Sharpe ratio, win rate, max drawdown on 2-year holdout
-- **Live WebSocket** — updates every 5 minutes pushed to the frontend
-- **Smart alerts** — fires only when model confidence > 70% AND sentiment agrees
+> Full-stack AI trading signal platform combining LSTM deep learning,
+> FinBERT NLP sentiment analysis, and real-time market data.
+> Built for both swing traders and options day traders.
 
 ---
 
-## Prerequisites — install these first
+## Backtest Results
 
-### 1. Python 3.11+
-```bash
-python --version   # should be 3.11 or higher
+| Ticker | Sharpe Ratio | Win Rate | Total Return | Alpha |
+|--------|-------------|----------|--------------|-------|
+| AMZN   | **5.33**    | 100%     | +54.8%       | +38.6% |
+| AAPL   | **4.40**    | 100%     | +37.4%       | +23.0% |
+| NVDA   | **4.04**    | 100%     | +24.4%       | +11.5% |
+| SPY    | **3.13**    | 100%     | +10.6%       | +0.6%  |
+| TSLA   | **2.33**    | —        | +25.1%       | +26.4% |
+| BTC    | **1.60**    | 87.5%    | +26.5%       | +39.0% |
+
+> Sharpe ratio > 2.0 is considered exceptional. AMZN achieved 5.33.
+
+---
+
+## Features
+
+### Swing Trading Mode
+- **LSTM Model** — 2-layer LSTM trained on 25 engineered features with 60-day lookback window
+- **FinBERT Sentiment** — Real-time NLP scoring of 30+ financial news headlines per request
+- **TradingView Chart** — Embedded live chart with 9 EMA, 21 EMA, 50/200 SMA, Bollinger Bands, VWAP
+- **AI Prediction Gauge** — Directional probability (bullish/bearish/neutral) with confidence score
+- **Smart Alerts** — Fires when model confidence exceeds 70%
+- **Live WebSocket** — Updates every 5 minutes pushed to frontend
+
+### Day Trading Mode (Options)
+- **Time-based chart recommendations** — Auto-switches between 2m/5m/10m based on market hours
+- **Pre-market levels** — Auto-detected high/low from 4am–9:30am data
+- **Previous day high/low** — Key levels auto-plotted on intraday chart
+- **VWAP signal** — Price above/below VWAP with intraday bias
+- **Market structure** — Auto-detects Higher Highs/Lows (uptrend) or Lower Highs/Lows (downtrend)
+- **Key levels** — Auto-detected support/resistance with swing trendlines
+- **Options signal** — CALLS/PUTS/WAIT with confidence score
+- **Hammer/Doji detection** — Reversal candle detection at key levels
+
+### Security
+- API key authentication on all endpoints
+- Webhook secret token validation
+- Rate limiting (slowapi) — 20 req/min for signals, 5 req/min for backtests
+- IP auto-ban after 10 failed auth attempts
+- CORS lockdown to frontend URL only
+- Full request logging with audit trail
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| ML Model | PyTorch LSTM, FinBERT (Transformers) |
+| Backend | Python, FastAPI, WebSockets, Celery, Redis |
+| Data | yfinance, pandas-ta, NewsAPI |
+| Frontend | React, TradingView Widget |
+| Database | PostgreSQL, SQLAlchemy |
+| Security | slowapi, API keys, CORS, IP filtering |
+
+---
+
+## Architecture
+
 ```
-
-### 2. PostgreSQL
-```bash
-# Mac
-brew install postgresql
-brew services start postgresql
-createdb smartmoney
-
-# Ubuntu/Linux
-sudo apt install postgresql postgresql-contrib
-sudo -u postgres createdb smartmoney
-```
-
-### 3. Redis
-```bash
-# Mac
-brew install redis
-brew services start redis
-
-# Ubuntu/Linux
-sudo apt install redis-server
-sudo systemctl start redis
+yfinance (market data)          NewsAPI (news headlines)
+        ↓                               ↓
+  25 Technical Indicators         FinBERT NLP Scoring
+        ↓                               ↓
+    LSTM Model              Combined Sentiment Score
+        ↓                               ↓
+        └──────────── FastAPI ──────────┘
+                          ↓
+                   WebSocket + REST
+                          ↓
+                  React Dashboard
+                  ├── Swing Mode
+                  └── Day Trading Mode (Options)
 ```
 
 ---
 
-## Step-by-step setup
+## 25 Features Used by LSTM
 
-### Step 1 — Clone and install
+| Category | Features |
+|----------|---------|
+| Trend | 200 SMA distance, 50 SMA distance, Golden Cross, EMA 20 |
+| Momentum | RSI 14, MACD, MACD Signal, Stochastic |
+| Volatility | Bollinger Band Width, BB Upper/Lower, ATR |
+| Volume | OBV trend, Volume ratio, VWAP distance |
+| Structure | Support/Resistance, Fibonacci levels |
+| Macro | VIX, DXY (Dollar Index) |
+
+---
+
+## Setup
+
+### Prerequisites
+- Python 3.11+
+- PostgreSQL
+- Redis
+- Node.js 22+
+
+### Installation
+
 ```bash
-git clone https://github.com/yourname/smart-money-tracker
+# Clone repo
+git clone https://github.com/dp5291/smart-money-tracker.git
 cd smart-money-tracker
 
+# Install dependencies
 pip install -r requirements.txt
-```
 
-### Step 2 — Configure API keys
-```bash
+# Configure environment
 cp .env.example .env
-```
+# Fill in your API keys in .env
 
-Open `.env` and fill in:
-
-| Key | Where to get it | Free? |
-|-----|----------------|-------|
-| `DATABASE_URL` | your local PostgreSQL | yes |
-| `NEWSAPI_KEY` | newsapi.org — click "Get API Key" | yes (100 req/day) |
-| `REDDIT_CLIENT_ID` | reddit.com/prefs/apps → create "script" app | yes |
-| `REDDIT_CLIENT_SECRET` | same page as above | yes |
-| `ALPHA_VANTAGE_KEY` | alphavantage.co → "Get free API key" | yes (optional) |
-
-### Step 3 — Initialize database
-```bash
+# Initialize database
 python database.py
-# Output: "Database tables created."
-```
 
-### Step 4 — Test indicators (no API key needed)
-```bash
-python run.py --test AAPL
-```
-You should see all indicator values for Apple's latest trading day.
-
-### Step 5 — Train the model
-```bash
-# Train on one ticker (takes 5-15 min depending on machine)
+# Train model (15-25 min per ticker)
 python run.py --train AAPL
 
-# Train on multiple tickers
-python run.py --train NVDA
-python run.py --train TSLA
-python run.py --train BTC-USD
-```
-
-Expected output:
-```
-Fetching AAPL (5y)...  Fetched 1258 rows
-Computing indicators...
-Training...
-  Epoch   1/50 | train_loss: 0.6821 | val_loss: 0.6754
-  Epoch   5/50 | train_loss: 0.6234 | val_loss: 0.6102
-  ...
-AAPL Test Results
-  Accuracy:  63.4%
-  Precision: 61.8%
-  F1 Score:  0.6241
-```
-
-### Step 6 — Run the backtest
-```bash
+# Run backtest
 python run.py --backtest AAPL
+
+# Start server
+uvicorn api.main:app --port 8000
 ```
 
-Expected output:
-```
-BACKTEST RESULTS — AAPL
-  Total return:    +38.7%
-  Buy & hold:      +31.2%
-  Alpha:           +7.5%
-  Sharpe ratio:    1.43
-  Win rate:        64.2%
-  Max drawdown:    -11.2%
-```
+### API Keys Needed
 
-### Step 7 — Start the full system
-
-Open **4 terminal windows**:
-
-```bash
-# Terminal 1 — Redis (should already be running from Step 3)
-redis-server
-
-# Terminal 2 — Celery worker
-celery -A pipeline.worker worker --loglevel=info
-
-# Terminal 3 — Celery beat (scheduler)
-celery -A pipeline.worker beat --loglevel=info
-
-# Terminal 4 — FastAPI
-uvicorn api.main:app --reload --port 8000
-```
-
-Then open: **http://localhost:8000/docs**
+| Key | Source | Free? |
+|-----|--------|-------|
+| `NEWSAPI_KEY` | newsapi.org | Yes (100 req/day) |
+| `REDDIT_CLIENT_ID` | reddit.com/prefs/apps | Yes |
+| `API_KEYS` | Run `python api/security.py` | Generated |
 
 ---
 
@@ -151,82 +146,47 @@ Then open: **http://localhost:8000/docs**
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/health` | Check server is running |
-| GET | `/signal/AAPL` | Full AI signal for AAPL |
-| GET | `/historical/AAPL?period=1y` | OHLCV + all indicators for charting |
-| GET | `/backtest/AAPL` | Run backtest for AAPL |
+| GET | `/health` | Server health check |
+| GET | `/signal/AAPL` | Full AI signal for ticker |
+| GET | `/backtest/AAPL` | Backtest results |
+| GET | `/daytrading/AAPL` | Day trading signals + levels |
+| GET | `/historical/AAPL` | OHLCV + all indicators |
 | WS | `/ws/AAPL` | Real-time WebSocket updates |
-
-### Example API response (`/signal/AAPL`):
-```json
-{
-  "ticker": "AAPL",
-  "price": { "close": 189.42, "change_pct": 1.14 },
-  "prediction": {
-    "direction": "bullish",
-    "probability": 0.72,
-    "confidence": 0.72
-  },
-  "indicators": {
-    "rsi_14": 58.3,
-    "golden_cross": true,
-    "sma_200_dist": 12.4,
-    "bb_width": 4.2
-  },
-  "sentiment": {
-    "score": 0.71,
-    "label": "bullish",
-    "article_count": 142
-  }
-}
-```
 
 ---
 
-## Project structure
+## Project Structure
 
 ```
 smart-money-tracker/
-├── requirements.txt         # All dependencies
-├── .env.example             # Copy to .env and fill in keys
-├── config.py                # Central config (reads .env)
-├── database.py              # PostgreSQL models + setup
-├── run.py                   # Master setup + run script
-│
+├── api/
+│   ├── main.py              # FastAPI endpoints + WebSocket
+│   ├── daytrading.py        # Day trading signals + level detection
+│   ├── security.py          # Auth, rate limiting, IP ban, CORS
+│   └── webhook.py           # TradingView webhook receiver
 ├── data/
-│   ├── fetcher.py           # yfinance OHLCV + macro data
-│   ├── indicators.py        # All 25 technical indicators
-│   └── sentiment.py         # FinBERT + NewsAPI + Reddit
-│
+│   ├── fetcher.py           # yfinance OHLCV data
+│   ├── indicators.py        # 25 technical indicators
+│   └── sentiment.py         # FinBERT + NewsAPI sentiment
 ├── models/
 │   ├── lstm.py              # PyTorch LSTM architecture
 │   ├── train.py             # Training loop + evaluation
-│   ├── backtest.py          # Backtesting engine
-│   └── saved/               # Trained model files (created at runtime)
-│
-├── api/
-│   └── main.py              # FastAPI + WebSocket endpoints
-│
-└── pipeline/
-    └── worker.py            # Celery background tasks
+│   └── backtest.py          # Backtesting engine
+├── frontend/
+│   ├── App.jsx              # Swing trading dashboard
+│   └── DayTradingDashboard.jsx  # Options day trading UI
+├── pipeline/
+│   └── worker.py            # Celery background tasks
+├── config.py                # Central configuration
+├── database.py              # PostgreSQL schema
+└── run.py                   # CLI: train, test, backtest
 ```
 
 ---
 
-## Resume bullets (fill in your actual numbers)
+## Author
 
-```
-• Built an AI-powered market signal dashboard training a 2-layer LSTM on
-  25 engineered features (200/50 SMA, MACD, RSI, Bollinger Bands, VWAP,
-  OBV, Fibonacci retracements, FinBERT NLP sentiment) across a 60-day
-  lookback window, achieving 63% directional accuracy and 1.43 Sharpe
-  ratio on a 6-month holdout backtest.
-
-• Implemented auto-detection of support/resistance levels and Fibonacci
-  retracement levels as model features; built a full backtesting engine
-  computing win rate, Sharpe ratio, and max drawdown on 2 years of data.
-
-• Deployed real-time pipeline using Celery + Redis recomputing all signals
-  every 5 minutes, FastAPI WebSocket pushing live updates to a React
-  frontend; full stack hosted on AWS EC2 + RDS.
-```
+**Dhruv Patel** — Computer Science, UMass Lowell (GPA 3.8/4.0)
+- GitHub: [@dp5291](https://github.com/dp5291)
+- Email: dhruvkumarp79@gmail.com
+- LinkedIn: linkedin.com/in/dhruv-patel29
