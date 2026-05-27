@@ -545,7 +545,7 @@ async def get_daytrading_signal(
                 (ticker, "2m",  "1d"),
                 (ticker, "5m",  "1d"),
                 (ticker, "15m", "1d"),
-                (ticker, "1h",  "5d"),
+                (ticker, "1h",  "15d"),
             ]))
         df_2m, df_5m, df_10m, df_1h = results
 
@@ -556,7 +556,7 @@ async def get_daytrading_signal(
         prev_day = get_previous_day_levels(ticker)
 
         # Get key support/resistance levels and trendlines
-        key_levels = get_key_levels(df_5m if not df_5m.empty else df_1h)
+        key_levels = get_key_levels(df_1h if not df_1h.empty else df_5m)
 
         # Current price
         price_df = df_5m if not df_5m.empty else df_1h
